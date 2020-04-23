@@ -36,6 +36,7 @@ IS_RELEASE = false
 ARCH=$(shell go env GOARCH)
 MARCH=$(shell go env GOOS)-$(shell go env GOARCH)
 STABLE_TAG ?= $(ARCH)-$(BASE_VERSION)-stable
+TARGET_VERSION=$(ARCH)-$(BASE_VERSION)-snapshot
 
 ifneq ($(IS_RELEASE),true)
 EXTRA_VERSION ?= snapshot-$(shell git rev-parse --short HEAD)
@@ -72,7 +73,8 @@ path-map.fabric-ca-server := cmd/fabric-ca-server
 
 include docker-env.mk
 
-all: rename docker unit-tests
+#all: rename docker unit-tests
+all: docker
 
 rename: .FORCE
 	@scripts/rename-repo
@@ -144,8 +146,8 @@ build/image/%/$(DUMMY): Makefile build/image/%/payload
 		| sed -e 's|_TAG_|$(DOCKER_TAG)|g' \
 		| sed -e 's|_PGVER_|$(PGVER)|g' \
 		> $(@D)/Dockerfile
-	$(DBUILD) -t $(DOCKER_NAME) --build-arg FABRIC_CA_DYNAMIC_LINK=$(FABRIC_CA_DYNAMIC_LINK) $(@D)
-	docker tag $(DOCKER_NAME) $(DOCKER_NAME):$(DOCKER_TAG)
+	$(DBUILD) -t $(DOCKER_NAME):$(TARGET_VERSION) --build-arg FABRIC_CA_DYNAMIC_LINK=$(FABRIC_CA_DYNAMIC_LINK) $(@D)
+	#docker tag $(DOCKER_NAME) $(DOCKER_NAME):$(DOCKER_TAG)
 	@touch $@
 
 build/image/fabric-ca/payload: \
@@ -225,7 +227,7 @@ ci-tests: docker-clean all-tests docker-fvt docs
 
 %-docker-clean:
 	$(eval TARGET = ${patsubst %-docker-clean,%,${@}})
-	-docker images -q $(DOCKER_NS)/$(TARGET):latest | xargs -I '{}' docker rmi -f '{}'
+	-docker images -q $(DOCKER_NS)/$(TARGET):$(TARGET_VERSION) | xargs -I '{}' docker rmi -f '{}'
 	-docker images -q $(NEXUS_URL)/*:$(STABLE_TAG) | xargs -I '{}' docker rmi -f '{}'
 	-@rm -rf build/image/$(TARGET) ||:
 
