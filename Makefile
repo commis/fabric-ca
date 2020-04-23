@@ -33,13 +33,14 @@
 PROJECT_NAME = fabric-ca
 ALPINE_VER ?= 3.11
 DEBIAN_VER ?= stretch
-BASE_VERSION = 2.0.0
+BASE_VERSION = 2.1.0
 PREV_VERSION = 2.0.0-alpha
 IS_RELEASE = false
 
 ARCH=$(shell go env GOARCH)
 MARCH=$(shell go env GOOS)-$(shell go env GOARCH)
 STABLE_TAG ?= $(ARCH)-$(BASE_VERSION)-stable
+TARGET_VERSION=$(ARCH)-$(BASE_VERSION)-snapshot
 
 ifneq ($(IS_RELEASE),true)
 EXTRA_VERSION ?= snapshot-$(shell git rev-parse --short HEAD)
@@ -78,7 +79,8 @@ path-map.fabric-ca-server := cmd/fabric-ca-server
 
 include docker-env.mk
 
-all: rename docker unit-tests
+#all: rename docker unit-tests
+all: docker clean-dangling
 
 include gotools.mk
 
@@ -135,11 +137,7 @@ build/image/fabric-ca/$(DUMMY):
 		--build-arg GO_TAGS=pkcs11 \
 		--build-arg GO_LDFLAGS="${DOCKER_GO_LDFLAGS}" \
 		--build-arg ALPINE_VER=${ALPINE_VER} \
-		-t $(BASE_DOCKER_NS)/$(TARGET) .
-	docker tag $(BASE_DOCKER_NS)/$(TARGET) \
-		$(DOCKER_NS)/$(TARGET):$(BASE_VERSION)
-	docker tag $(BASE_DOCKER_NS)/$(TARGET) \
-		$(DOCKER_NS)/$(TARGET):$(DOCKER_TAG)
+		-t $(DOCKER_NS)/$(TARGET):$(TARGET_VERSION) .
 	@touch $@
 
 build/image/fabric-ca-fvt/$(DUMMY):
@@ -210,7 +208,7 @@ fvt-tests: docker-clean docker-fvt
 
 %-docker-clean:
 	$(eval TARGET = ${patsubst %-docker-clean,%,${@}})
-	-docker images -q $(DOCKER_NS)/$(TARGET):latest | xargs -I '{}' docker rmi -f '{}'
+	-docker images -q $(DOCKER_NS)/$(TARGET):$(TARGET_VERSION) | xargs -I '{}' docker rmi -f '{}'
 	-docker images -q $(NEXUS_URL)/*:$(STABLE_TAG) | xargs -I '{}' docker rmi -f '{}'
 	-@rm -rf build/image/$(TARGET) ||:
 
@@ -280,8 +278,12 @@ dist/linux-s390x:
 	cd release/linux-s390x && tar -czvf hyperledger-fabric-ca-linux-s390x-$(PROJECT_VERSION).tar.gz *
 
 .PHONY: clean
-clean: docker-clean release-clean
+clean: docker-clean release-clean clean-dangling
 	-@rm -rf build bin ||:
+
+.PHONY: clean-dangling
+clean-dangling:
+	@docker images --filter "dangling=true" -q |xargs -ti docker rmi -f {}
 
 .PHONY: clean-all
 clean-all: clean dist-clean
